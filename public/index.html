@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Target Activity Hub</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;background:#0f1115;color:#f5f7fa}header{padding:18px;background:#171a21;border-bottom:1px solid #2a2f3a}h1{margin:0 0 6px;font-size:22px}main{padding:16px;max-width:900px;margin:auto}.card{background:#171a21;border:1px solid #2a2f3a;border-radius:14px;padding:14px;margin-bottom:14px}.pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#242a35;margin:4px 6px 4px 0;font-size:13px}.status{font-size:13px;color:#b7c0cc}.event{padding:12px 0;border-top:1px solid #2a2f3a}.event:first-child{border-top:0}.event h3{margin:0 0 4px;font-size:16px}.event p{margin:3px 0;color:#c9d1dc;font-size:14px;white-space:pre-wrap}.meta{font-size:12px;color:#8d98a8}button,input{font:inherit}button{background:#f5f7fa;color:#111;border:0;border-radius:10px;padding:10px 14px;font-weight:700}textarea{width:100%;box-sizing:border-box;min-height:130px;background:#0f1115;color:#fff;border:1px solid #333b49;border-radius:10px;padding:10px}code{font-size:12px;color:#d4dae2}#empty{color:#8d98a8}</style>
+</head>
+<body>
+<header><h1>Target Activity Hub</h1><div class="status" id="status">Connecting…</div></header>
+<main>
+  <div class="card">
+    <strong>Current target</strong><br/>
+    <span class="pill">Rebecca Canady</span><span class="pill">ohmygodbeckky</span><span class="pill">504-494-4022</span><span class="pill">Historical: 504-400-3107</span><span class="pill">2020 onward</span>
+  </div>
+  <div class="card">
+    <strong>Authorized JSON import</strong>
+    <p class="status">Paste records from exports or feeds you are authorized to access. Matching target records from 2020 onward are kept.</p>
+    <textarea id="json" placeholder='[{"timestamp":"2025-11-08T13:27:00Z","source":"instagram-export","handle":"ohmygodbeckky","text":"Example authorized record"}]'></textarea><br/><br/>
+    <button onclick="doImport()">Import records</button>
+    <div class="status" id="importStatus"></div>
+  </div>
+  <div class="card">
+    <strong>Live activity</strong>
+    <p class="status">Auto-refreshes every 15 seconds from the server.</p>
+    <div id="events"><div id="empty">No matching live records loaded yet.</div></div>
+  </div>
+</main>
+<script>
+async function load(){
+  try{
+    const r=await fetch('/api/events?limit=200'); const d=await r.json();
+    document.getElementById('status').textContent=`Live • ${d.count} matching records • updated ${new Date(d.updatedAt).toLocaleTimeString()}`;
+    const box=document.getElementById('events');
+    if(!d.events.length){box.innerHTML='<div id="empty">No matching live records loaded yet.</div>';return;}
+    box.innerHTML=d.events.map(e=>`<div class="event"><h3>${esc(e.title||'Activity')}</h3><div class="meta">${esc(e.source||'')} • ${new Date(e.timestamp).toLocaleString()}</div><p>${esc(e.summary||'')}</p>${e.phone?`<div class="meta">${esc(e.phone)}</div>`:''}${e.handle?`<div class="meta">@${esc(String(e.handle).replace(/^@/,''))}</div>`:''}</div>`).join('');
+  }catch(e){document.getElementById('status').textContent='Server unavailable';}
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
+async function doImport(){
+  const out=document.getElementById('importStatus');
+  try{
+    const parsed=JSON.parse(document.getElementById('json').value);
+    const r=await fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Array.isArray(parsed)?parsed:{records:parsed.records||[parsed]})});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||'Import failed');
+    out.textContent=`Imported ${d.imported} of ${d.scanned} records.`; load();
+  }catch(e){out.textContent=e.message;}
+}
+load(); setInterval(load,15000);
+</script>
+</body>
+</html>
