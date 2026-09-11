@@ -1,0 +1,16 @@
+{
+  "name": "target-activity-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mobile-first live activity dashboard for authorized phone/account exports and feeds.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
