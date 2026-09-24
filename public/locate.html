@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Remote Location</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:#0f1115;color:#f5f7fa}header{padding:18px;background:#171a21;border-bottom:1px solid #2a2f3a}main{padding:16px;max-width:1000px;margin:auto}.card{background:#171a21;border:1px solid #2a2f3a;border-radius:14px;padding:14px;margin-bottom:14px}.status{color:#b7c0cc;font-size:13px}#map{height:55vh;min-height:320px;border-radius:12px;background:#222}button{background:#f5f7fa;color:#111;border:0;border-radius:10px;padding:10px 14px;font-weight:700;margin-right:8px}a{color:#9ecbff}
+</style></head><body>
+<header><strong>Remote Location</strong><div class="status" id="status">Connecting…</div></header>
+<main><div class="card"><button onclick="refresh()">Refresh location</button><button onclick="demo()">Run test provider</button><p class="status">This dashboard displays authorized network/cell-location data received by the server. The test provider only verifies the dashboard pipeline; it does not locate a real phone.</p></div>
+<div class="card"><div id="map">Map loading…</div></div>
+<div class="card"><div id="details" class="status">No location received yet.</div></div></main>
+<script>
+let map,marker;
+function loadMap(lat,lon){
+ if(!map){map=L.map('map').setView([lat,lon],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);}
+ else map.setView([lat,lon],13);
+ if(!marker) marker=L.marker([lat,lon]).addTo(map); else marker.setLatLng([lat,lon]);
+}
+async function refresh(){try{const r=await fetch('/api/location');const d=await r.json();const x=d.location;if(!x){document.getElementById('status').textContent='No location received';return;}loadMap(x.latitude,x.longitude);document.getElementById('status').textContent='Location received • '+new Date(x.timestamp).toLocaleString();document.getElementById('details').textContent='Source: '+(x.source||d.provider||'unknown')+' • Accuracy: '+(x.accuracy?x.accuracy+' m':'not supplied')+' • Coordinates: '+x.latitude+', '+x.longitude;}catch(e){document.getElementById('status').textContent='Server unavailable';}}
+async function demo(){await fetch('/api/cell-location/test');refresh();}
+refresh();setInterval(refresh,15000);
+</script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</body></html>
