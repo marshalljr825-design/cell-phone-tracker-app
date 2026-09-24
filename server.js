@@ -7,7 +7,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
 const INGEST_TOKEN = process.env.INGEST_TOKEN || '';
-const LOCATION_TOKEN = process.env.LOCATION_TOKEN || '';
+const LOCATION_TOKEN = process.env.LOCATION_TOKEN || process.env.INGEST_TOKEN || '';
+const CELL_PROVIDER = process.env.CELL_PROVIDER || 'manual';
 const IG_CLIENT_ID = process.env.IG_CLIENT_ID || '';
 const IG_CLIENT_SECRET = process.env.IG_CLIENT_SECRET || '';
 const IG_REDIRECT_URI = process.env.IG_REDIRECT_URI || '';
@@ -56,7 +57,21 @@ function store(raw, source='authorized-feed') {
 }
 
 app.get('/api/target',(_req,res)=>res.json(TARGET));
-app.get('/api/location',(_req,res)=>res.json({location:latestLocation}));
+app.get('/api/location',(_req,res)=>res.json({location:latestLocation,provider:CELL_PROVIDER,liveSource:latestLocation?.source||null}));
+app.post('/api/cell-observation',requireLocationToken,(req,res)=>{
+  const cells=Array.isArray(req.body?.cells)?req.body.cells:[];
+  const usable=cells.filter(c=>Number.isFinite(Number(c.latitude))&&Number.isFinite(Number(c.longitude)));
+  if(!usable.length) return res.status(400).json({error:'Provide cells with latitude and longitude resolved from an authorized cellular-location source.'});
+  let total=0,lat=0,lon=0;
+  for(const c of usable){ const w=Math.max(0.01,Number(c.weight)||Number(c.samples)||1); total+=w; lat+=Number(c.latitude)*w; lon+=Number(c.longitude)*w; }
+  latestLocation={latitude:lat/total,longitude:lon/total,accuracy:Number.isFinite(Number(req.body.accuracy))?Number(req.body.accuracy):null,timestamp:req.body.timestamp||new Date().toISOString(),device:req.body.device||'Verizon cellular observation',source:'cell-network'};
+  res.json({ok:true,location:latestLocation,matchedCells:usable.length});
+});
+app.get('/api/cell-location/test',(_req,res)=>{
+  const latitude=Number(process.env.DEMO_LAT||29.9511),longitude=Number(process.env.DEMO_LON||-90.0715);
+  latestLocation={latitude,longitude,accuracy:500,timestamp:new Date().toISOString(),device:'Demo cellular provider',source:'demo-cell-provider'};
+  res.json({ok:true,demo:true,location:latestLocation});
+});
 app.post('/api/location',requireLocationToken,(req,res)=>{
   const {latitude,longitude,accuracy,altitude,heading,speed,timestamp,device}=req.body||{};
   if(!Number.isFinite(Number(latitude))||!Number.isFinite(Number(longitude))) return res.status(400).json({error:'Valid latitude and longitude are required.'});
