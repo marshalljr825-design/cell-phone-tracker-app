@@ -7,6 +7,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
 const INGEST_TOKEN = process.env.INGEST_TOKEN || '';
+const LOCATION_TOKEN = process.env.LOCATION_TOKEN || '';
 const IG_CLIENT_ID = process.env.IG_CLIENT_ID || '';
 const IG_CLIENT_SECRET = process.env.IG_CLIENT_SECRET || '';
 const IG_REDIRECT_URI = process.env.IG_REDIRECT_URI || '';
@@ -21,6 +22,8 @@ const TARGET = {
 };
 
 let events = [];
+let latestLocation = null;
+
 function normalizePhone(value=''){ return String(value).replace(/\D/g,'').replace(/^1(?=\d{10}$)/,''); }
 function isTargetRecord(record={}) {
   const blob = JSON.stringify(record).toLowerCase();
@@ -39,6 +42,12 @@ function requireToken(req,res,next){
   if(supplied!==INGEST_TOKEN) return res.status(401).json({error:'Unauthorized'});
   next();
 }
+function requireLocationToken(req,res,next){
+  if(!LOCATION_TOKEN) return res.status(503).json({error:'LOCATION_TOKEN is not configured.'});
+  const supplied=req.get('x-location-token')||req.query.token;
+  if(supplied!==LOCATION_TOKEN) return res.status(401).json({error:'Unauthorized'});
+  next();
+}
 function store(raw, source='authorized-feed') {
   if(!raw || typeof raw!=='object') return false;
   const record={id:raw.id||`${Date.now()}-${Math.random().toString(36).slice(2)}`,source:raw.source||source,type:raw.type||'activity',timestamp:raw.timestamp||raw.date||raw.created_time||raw.created_at||new Date().toISOString(),title:raw.title||raw.name||raw.from||raw.handle||raw.username||'Activity',summary:raw.summary||raw.text||raw.message||raw.caption||'',phone:raw.phone||raw.number||'',handle:raw.handle||raw.username||'',raw};
@@ -47,6 +56,14 @@ function store(raw, source='authorized-feed') {
 }
 
 app.get('/api/target',(_req,res)=>res.json(TARGET));
+app.get('/api/location',(_req,res)=>res.json({location:latestLocation}));
+app.post('/api/location',requireLocationToken,(req,res)=>{
+  const {latitude,longitude,accuracy,altitude,heading,speed,timestamp,device}=req.body||{};
+  if(!Number.isFinite(Number(latitude))||!Number.isFinite(Number(longitude))) return res.status(400).json({error:'Valid latitude and longitude are required.'});
+  latestLocation={latitude:Number(latitude),longitude:Number(longitude),accuracy:Number.isFinite(Number(accuracy))?Number(accuracy):null,altitude:Number.isFinite(Number(altitude))?Number(altitude):null,heading:Number.isFinite(Number(heading))?Number(heading):null,speed:Number.isFinite(Number(speed))?Number(speed):null,timestamp:timestamp||new Date().toISOString(),device:device||'iPhone'};
+  res.json({ok:true,location:latestLocation});
+});
+app.get('/locate',(_req,res)=>res.sendFile(path.join(__dirname,'public','locate.html')));
 app.get('/api/events',(req,res)=>{ const limit=Math.min(Math.max(parseInt(req.query.limit||'100',10),1),500); const source=req.query.source?String(req.query.source).toLowerCase():null; const out=events.filter(e=>!source||String(e.source||'').toLowerCase()===source).sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0)).slice(0,limit); res.json({count:out.length,events:out,updatedAt:new Date().toISOString()}); });
 app.post('/api/ingest',requireToken,(req,res)=>{ const incoming=Array.isArray(req.body)?req.body:[req.body]; let accepted=0; incoming.forEach(r=>{if(store(r)) accepted++;}); res.json({accepted,ignored:incoming.length-accepted,totalStored:events.length}); });
 app.post('/api/import',(req,res)=>{ const incoming=Array.isArray(req.body)?req.body:req.body?.records; if(!Array.isArray(incoming)) return res.status(400).json({error:'Send {"records":[...]} or a JSON array.'}); let imported=0; incoming.forEach(r=>{if(store({...r,source:r.source||'manual-import'},'manual-import')) imported++;}); res.json({imported,scanned:incoming.length,totalStored:events.length}); });
@@ -84,6 +101,6 @@ app.post('/api/instagram/sync',async(_req,res)=>{
     res.json({scanned,accepted,totalStored:events.length,syncedAt:new Date().toISOString()});
   } catch(e){ res.status(500).json({error:e.message}); }
 });
-app.get('/api/health',(_req,res)=>res.json({ok:true,now:new Date().toISOString(),storedEvents:events.length,instagramConnected:Boolean(igAccessToken)}));
+app.get('/api/health',(_req,res)=>res.json({ok:true,now:new Date().toISOString(),storedEvents:events.length,locationConnected:Boolean(latestLocation),instagramConnected:Boolean(igAccessToken)}));
 app.get('*',(_req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 app.listen(PORT,()=>console.log(`Target Activity Hub listening on port ${PORT}`));
